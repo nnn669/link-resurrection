@@ -1,0 +1,331 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Link Resurrection — bring your dead bookmarks back</title>
+<meta name="description" content="Paste your old bookmarks. We check which still live, and revive the dead ones from the Wayback Machine into a clean new start page.">
+<style>
+  :root{
+    --bg:#14101d; --panel:#1e1830; --panel2:#261e3d; --line:#3a2f56;
+    --text:#f2edff; --muted:#b3a8d4; --accent:#ff7a1a; --accent2:#9b5cff;
+    --alive:#2fbf71; --dead:#e5484d; --revived:#ffb020; --gone:#8a829e; --unknown:#4cc3ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--text);
+    font-family:system-ui,-apple-system,"Segoe UI",Roboto,"Helvetica Neue",Arial,sans-serif;}
+  .wrap{max-width:860px;margin:0 auto;padding:28px 18px 60px}
+  header{text-align:center;padding:18px 0 6px}
+  h1{font-size:2rem;margin:0 0 6px}
+  h1 .ghost{filter:grayscale(.2)}
+  .tag{color:var(--muted);margin:0 auto;max-width:560px;line-height:1.5}
+  .panel{background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:16px;margin-top:18px}
+  textarea{width:100%;min-height:130px;resize:vertical;border-radius:10px;
+    border:1px solid var(--line);background:var(--panel2);color:var(--text);
+    padding:12px;font-size:.95rem;line-height:1.5}
+  textarea::placeholder{color:var(--muted)}
+  .row{display:flex;flex-wrap:wrap;gap:10px;margin-top:12px;align-items:center}
+  button{border:0;border-radius:10px;padding:11px 16px;font-size:.95rem;cursor:pointer;
+    background:var(--panel2);color:var(--text);border:1px solid var(--line)}
+  button:hover{border-color:var(--accent2)}
+  button.primary{background:linear-gradient(90deg,var(--accent),var(--accent2));
+    color:#fff;border:0;font-weight:600}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .filelabel{display:inline-block;border:1px solid var(--line);background:var(--panel2);
+    border-radius:10px;padding:11px 16px;cursor:pointer;font-size:.95rem}
+  .hint{color:var(--muted);font-size:.85rem;line-height:1.5}
+  #stats{display:none;gap:8px;flex-wrap:wrap;margin-top:18px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:999px;
+    padding:6px 13px;font-size:.88rem}
+  .stat b{font-size:1rem}
+  #results{margin-top:14px;display:flex;flex-direction:column;gap:8px}
+  .item{background:var(--panel);border:1px solid var(--line);border-radius:12px;
+    padding:11px 13px;display:flex;gap:10px;align-items:flex-start}
+  .item .body{flex:1;min-width:0}
+  .url{word-break:break-all;font-size:.92rem;line-height:1.45}
+  .eff{word-break:break-all;font-size:.83rem;color:var(--muted);margin-top:2px;line-height:1.45}
+  .eff a{color:var(--unknown)}
+  .chip{flex:none;font-size:.76rem;font-weight:700;border-radius:999px;
+    padding:4px 10px;margin-top:1px;color:#14101d}
+  .chip.checking{background:var(--muted)}
+  .chip.alive{background:var(--alive)}
+  .chip.dead{background:var(--dead);color:#fff}
+  .chip.revived{background:var(--revived)}
+  .chip.gone{background:var(--gone);color:#fff}
+  .chip.unknown{background:var(--unknown)}
+  .item .open{flex:none;text-decoration:none;color:var(--text);border:1px solid var(--line);
+    border-radius:8px;padding:5px 10px;font-size:.83rem;margin-top:1px}
+  #exportBar{display:none;margin-top:16px}
+  footer{color:var(--muted);font-size:.82rem;text-align:center;margin-top:34px;line-height:1.6}
+  a{color:var(--accent2)}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1><span class="ghost">👻</span> Link Resurrection</h1>
+    <p class="tag">Paste in your old bookmarks. We check which ones still live —
+      and bring the dead ones back from the Wayback Machine, reborn as a clean new start page.</p>
+  </header>
+
+  <div class="panel">
+    <textarea id="input" placeholder="Paste URLs here, one per line…&#10;https://example.com&#10;that-old-blog-you-loved.com/post"></textarea>
+    <div class="row">
+      <button class="primary" id="checkBtn">⚡ Check &amp; resurrect</button>
+      <button id="demoBtn" type="button">Load demo links</button>
+      <label class="filelabel" for="fileInput">Import bookmarks.html</label>
+      <input type="file" id="fileInput" accept=".html,.htm" hidden>
+      <button id="clearBtn" type="button">Clear</button>
+    </div>
+    <p class="hint">Checks run through free public proxies, so a site that refuses
+      to be verified is honestly labelled <b>Unknown</b> — never guessed.
+      Nothing you paste is stored; everything happens in your browser.</p>
+  </div>
+
+  <div id="stats"></div>
+  <div id="results"></div>
+
+  <div class="panel" id="exportBar">
+    <div class="row" style="margin-top:0">
+      <button class="primary" id="copyBtn" type="button">📋 Copy start page</button>
+      <button id="dlBtn" type="button">⬇ Download start page (.html)</button>
+    </div>
+    <p class="hint">Your reborn start page: live links keep their original address,
+      resurrected links point at their archived copy.</p>
+  </div>
+
+  <footer>
+    Built for <a href="https://kiroween.devpost.com/" target="_blank" rel="noopener">Kiroween 2026</a>
+    · Resurrection track · Liveness via AllOrigins / CodeTabs ·
+    Archives via the <a href="https://web.archive.org/" target="_blank" rel="noopener">Wayback Machine</a>
+  </footer>
+</div>
+
+<script>
+"use strict";
+const $ = s => document.querySelector(s);
+const inputEl = $("#input"), resultsEl = $("#results"), statsEl = $("#stats"),
+      exportBar = $("#exportBar"), checkBtn = $("#checkBtn");
+let items = [];   // {url, status, effUrl, note}
+let running = false;
+
+const DEMO = [
+  "https://example.com",
+  "https://www.wikipedia.org",
+  "http://www.altavista.com",
+  "http://www.geocities.com",
+  "https://this-site-never-existed-98765.example.com"
+];
+
+function normalize(raw){
+  if(!raw) return null;
+  let u = raw.trim();
+  if(!u || u.startsWith("#")) return null;
+  if(!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(u)) u = "https://" + u;
+  try{
+    const p = new URL(u);
+    if(!/^https?:$/.test(p.protocol)) return null;
+    if(!p.hostname.includes(".")) return null;
+    return p.href;
+  }catch(e){ return null; }
+}
+
+function collectFromText(text){
+  const out = [], seen = new Set();
+  (text || "").split(/\s+/).forEach(tok => {
+    const n = normalize(tok);
+    if(n && !seen.has(n)){ seen.add(n); out.push(n); }
+  });
+  return out;
+}
+
+$("#demoBtn").addEventListener("click", () => { inputEl.value = DEMO.join("\n"); });
+
+$("#clearBtn").addEventListener("click", () => {
+  inputEl.value = ""; items = []; render();
+});
+
+$("#fileInput").addEventListener("change", async ev => {
+  const f = ev.target.files[0];
+  if(!f) return;
+  const text = await f.text();
+  const doc = new DOMParser().parseFromString(text, "text/html");
+  const urls = [...doc.querySelectorAll("a[href]")]
+    .map(a => a.getAttribute("href")).filter(h => /^https?:/i.test(h || ""));
+  const merged = collectFromText(inputEl.value).concat(urls.map(normalize).filter(Boolean));
+  inputEl.value = [...new Set(merged)].join("\n");
+  ev.target.value = "";
+});
+
+/* ---------- liveness checking ---------- */
+function fetchTimeout(url, ms){
+  const c = new AbortController();
+  const t = setTimeout(() => c.abort(), ms);
+  return fetch(url, {signal: c.signal}).finally(() => clearTimeout(t));
+}
+
+// Returns "alive" | "dead" | "unknown"
+async function probe(url){
+  // Primary: AllOrigins reports the target's real HTTP status code.
+  try{
+    const r = await fetchTimeout(
+      "https://api.allorigins.win/get?url=" + encodeURIComponent(url), 12000);
+    if(r.ok){
+      const j = await r.json();
+      const code = j && j.status && j.status.http_code;
+      if(code >= 200 && code < 400) return "alive";
+      if(code === 404 || code === 410) return "dead";
+      if(code) return "unknown"; // 401/403/5xx via proxy: not a trustworthy death
+    }
+  }catch(e){ /* fall through to fallback proxy */ }
+  // Fallback: CodeTabs proxy.
+  try{
+    const r = await fetchTimeout(
+      "https://api.codetabs.com/v1/proxy?quest=" + encodeURIComponent(url), 12000);
+    if(r.ok) return "alive";
+    if(r.status === 404 || r.status === 410) return "dead";
+    return "unknown";
+  }catch(e){ return "unknown"; }
+}
+
+/* ---------- resurrection via the Wayback Machine ---------- */
+async function resurrect(url){
+  try{
+    const r = await fetchTimeout(
+      "https://archive.org/wayback/available?url=" + encodeURIComponent(url), 12000);
+    if(!r.ok) return null;
+    const j = await r.json();
+    const snap = j && j.archived_snapshots && j.archived_snapshots.closest;
+    if(snap && snap.available && snap.url){
+      const ts = String(snap.timestamp || "");
+      const date = ts.length >= 8
+        ? ts.slice(0,4) + "-" + ts.slice(4,6) + "-" + ts.slice(6,8) : "";
+      return {archiveUrl: snap.url.replace(/^http:\/\//, "https://"), date};
+    }
+  }catch(e){ /* no snapshot reachable */ }
+  return null;
+}
+
+/* ---------- run ---------- */
+checkBtn.addEventListener("click", async () => {
+  if(running) return;
+  const urls = collectFromText(inputEl.value);
+  if(!urls.length){
+    inputEl.focus();
+    inputEl.placeholder = "Add at least one URL first — or hit “Load demo links”.";
+    return;
+  }
+  running = true; checkBtn.disabled = true;
+  items = urls.map(u => ({url: u, status: "checking", effUrl: "", note: ""}));
+  render();
+  let idx = 0;
+  async function worker(){
+    while(idx < items.length){
+      const it = items[idx++];
+      it.status = await probe(it.url);
+      if(it.status === "dead"){
+        const snap = await resurrect(it.url);
+        if(snap){
+          it.status = "revived";
+          it.effUrl = snap.archiveUrl;
+          it.note = snap.date ? "archived " + snap.date : "archived copy found";
+        }else{
+          it.status = "gone";
+          it.note = "no archived copy";
+        }
+      }
+      if(it.status === "alive") it.effUrl = it.url;
+      render();
+    }
+  }
+  await Promise.all([worker(), worker(), worker()]);
+  running = false; checkBtn.disabled = false;
+  render();
+});
+
+/* ---------- rendering ---------- */
+const CHIP = {checking:"⏳ Checking", alive:"✅ Alive", dead:"💀 Dead",
+              revived:"🧟 Resurrected", gone:"⚰️ Gone", unknown:"❔ Unknown"};
+function render(){
+  resultsEl.innerHTML = "";
+  items.forEach(it => {
+    const row = document.createElement("div"); row.className = "item";
+    const chip = document.createElement("span");
+    chip.className = "chip " + it.status; chip.textContent = CHIP[it.status] || it.status;
+    const body = document.createElement("div"); body.className = "body";
+    const u = document.createElement("div"); u.className = "url"; u.textContent = it.url;
+    body.appendChild(u);
+    if(it.effUrl && it.effUrl !== it.url){
+      const eff = document.createElement("div"); eff.className = "eff";
+      eff.append("→ ");
+      const a = document.createElement("a");
+      a.href = it.effUrl; a.target = "_blank"; a.rel = "noopener";
+      a.textContent = it.effUrl;
+      eff.appendChild(a);
+      if(it.note) eff.append(" · " + it.note);
+      body.appendChild(eff);
+    }else if(it.note){
+      const eff = document.createElement("div"); eff.className = "eff"; eff.textContent = it.note;
+      body.appendChild(eff);
+    }
+    row.appendChild(chip); row.appendChild(body);
+    if(it.effUrl){
+      const open = document.createElement("a");
+      open.className = "open"; open.href = it.effUrl;
+      open.target = "_blank"; open.rel = "noopener"; open.textContent = "Open";
+      row.appendChild(open);
+    }
+    resultsEl.appendChild(row);
+  });
+  // stats
+  const n = s => items.filter(i => i.status === s).length;
+  if(items.length){
+    statsEl.style.display = "flex";
+    statsEl.innerHTML = "";
+    [["Total", items.length], ["✅ Alive", n("alive")], ["🧟 Resurrected", n("revived")],
+     ["⚰️ Gone", n("gone")], ["❔ Unknown", n("unknown")], ["⏳ Checking", n("checking")]]
+    .forEach(([label, v]) => {
+      const s = document.createElement("span"); s.className = "stat";
+      s.append(label + " "); const b = document.createElement("b"); b.textContent = v; s.appendChild(b);
+      statsEl.appendChild(s);
+    });
+    exportBar.style.display = items.some(i => i.effUrl) ? "block" : "none";
+  }else{
+    statsEl.style.display = "none"; exportBar.style.display = "none";
+  }
+}
+
+/* ---------- export: reborn start page ---------- */
+function esc(s){ return s.replace(/&/g,"&amp;").replace(/</g,"&lt;")
+                        .replace(/>/g,"&gt;").replace(/"/g,"&quot;"); }
+function buildStartPage(){
+  const alive = items.filter(i => i.status === "alive");
+  const revived = items.filter(i => i.status === "revived");
+  const li = i => '      <li><a href="' + esc(i.effUrl) + '">' + esc(i.url) + "</a></li>";
+  return "<!DOCTYPE html>\n<html lang=\"en\">\n<head>\n<meta charset=\"UTF-8\">\n" +
+    "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n" +
+    "<title>My Resurrected Start Page</title>\n<style>body{font-family:system-ui,sans-serif;" +
+    "max-width:720px;margin:40px auto;padding:0 18px;background:#14101d;color:#f2edff}" +
+    "a{color:#4cc3ff}li{margin:7px 0;word-break:break-all}h1{font-size:1.5rem}</style>\n" +
+    "</head>\n<body>\n<h1>👻 My Resurrected Start Page</h1>\n" +
+    (alive.length ? "<h2>✅ Alive</h2>\n<ul>\n" + alive.map(li).join("\n") + "\n</ul>\n" : "") +
+    (revived.length ? "<h2>🧟 Resurrected from the Wayback Machine</h2>\n<ul>\n" +
+      revived.map(li).join("\n") + "\n</ul>\n" : "") +
+    "<p style=\"color:#b3a8d4;font-size:.85rem\">Generated by Link Resurrection.</p>\n</body>\n</html>";
+}
+$("#copyBtn").addEventListener("click", async () => {
+  try{ await navigator.clipboard.writeText(buildStartPage());
+    $("#copyBtn").textContent = "✔ Copied"; }
+  catch(e){ $("#copyBtn").textContent = "Copy failed — use Download"; }
+  setTimeout(() => $("#copyBtn").textContent = "📋 Copy start page", 1800);
+});
+$("#dlBtn").addEventListener("click", () => {
+  const blob = new Blob([buildStartPage()], {type: "text/html"});
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob); a.download = "startpage.html"; a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 4000);
+});
+</script>
+</body>
+</html>

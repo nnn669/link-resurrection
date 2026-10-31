@@ -1,0 +1,7 @@
+# OS / editor noise
+.DS_Store
+Thumbs.db
+*.log
+
+# NOTE: /.kiro is intentionally tracked in this repository.
+# It holds the Kiro specs and steering docs this project was built from.
